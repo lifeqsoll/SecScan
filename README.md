@@ -1,4 +1,4 @@
-# secscan (defensive)
+# SecScan (defensive)
 
 Кроссплатформенная (Windows/Linux/macOS) CLI-утилита для **защитной** проверки:
 

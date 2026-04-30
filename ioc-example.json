@@ -1,0 +1,13 @@
+{
+  "sha256": [
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  ],
+  "names": [
+    "badproc.exe",
+    "suspicious_loader.exe"
+  ],
+  "paths": [
+    "c:\\users\\public\\",
+    "c:\\windows\\temp\\"
+  ]
+}

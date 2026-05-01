@@ -12,7 +12,7 @@ from pathlib import Path
 import psutil
 
 from secscan.model import Finding, Severity
-from secscan.platform import is_linux, is_windows
+from secscan.platform import is_admin, is_linux, is_windows
 
 
 @dataclass(frozen=True)
@@ -56,13 +56,17 @@ def scan_hidden_ports() -> tuple[list[Finding], list[PortRecord]]:
         )
 
     if high_errors:
+        if is_admin():
+            rec = "Даже с правами администратора часть системных сокетов может быть скрыта/защищена ОС или EDR. Проверьте EDR policy и включите дополнительную телеметрию."
+        else:
+            rec = "Запустите скан от администратора/root: ограничения видимости могут создавать ложные расхождения."
         findings.append(
             Finding(
                 id="port.high_level_access_limited",
                 title="High-level источник портов может быть неполным из-за ограничений доступа",
                 severity=Severity.info,
                 details={"errors": high_errors},
-                recommendation="Запустите скан от администратора/root: ограничения видимости могут создавать ложные расхождения.",
+                recommendation=rec,
             )
         )
 

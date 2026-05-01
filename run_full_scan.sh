@@ -13,6 +13,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  echo "[*] Re-launching with sudo..."
+  exec sudo -E bash "$0" "$@"
+fi
+
 PYTHON_BIN="${PYTHON_BIN:-./.venv/bin/python}"
 OUT_DIR="${OUT_DIR:-./reports}"
 RUN_LABEL="${RUN_LABEL:-}"

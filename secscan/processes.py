@@ -7,7 +7,7 @@ from pathlib import Path
 import psutil
 
 from secscan.model import Finding, Severity
-from secscan.platform import is_windows
+from secscan.platform import is_admin, is_windows
 from secscan.util import run_cmd
 
 
@@ -214,13 +214,17 @@ def _check_windows_pid_visibility(psutil_pids: set[int]) -> list[Finding]:
     findings: list[Finding] = []
     code, out = run_cmd(["tasklist", "/FO", "CSV"], timeout_s=8)
     if code != 0 or not out:
+        if is_admin():
+            rec = "Проверьте доступность tasklist/антивирусных ограничений и целостность системных утилит. Это может быть не связано с правами."
+        else:
+            rec = "Запустите скан с правами администратора и проверьте доступность tasklist в окружении."
         findings.append(
             Finding(
                 id="proc.visibility_check_unavailable",
                 title="Проверка видимости процессов через tasklist недоступна",
                 severity=Severity.low,
                 details={"return_code": code, "output": out[:400]},
-                recommendation="Запустите скан с достаточными правами и проверьте доступность tasklist в окружении.",
+                recommendation=rec,
             )
         )
         return findings

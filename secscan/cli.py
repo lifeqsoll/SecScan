@@ -9,6 +9,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from secscan.desktop_app import launch_desktop_app
 from secscan.enterprise import (
     build_integrity_baseline,
     check_integrity_baseline,
@@ -136,12 +137,27 @@ def _run_threat_intel_and_siem(args, procs, findings, host_info) -> list:
         vt_api_key=args.vt_api_key,
         misp_url=args.misp_url,
         misp_key=args.misp_key,
+        vt_max_hash_checks=args.vt_max_hash_checks,
     )
     for line in intel_logs:
         console.print(f"[cyan]{line}[/cyan]")
     findings = findings + intel_findings
 
-    if args.vt_upload_malicious and args.vt_api_key:
+    # Always upload suspicious process binaries to VT when API key is provided.
+    suspicious_paths = sorted(
+        {
+            str(f.details.get("exe"))
+            for f in findings
+            if f.id.startswith("proc.") and isinstance(f.details, dict) and f.details.get("exe")
+        }
+    )
+
+    if args.vt_api_key and suspicious_paths:
+        upload_logs = upload_files_to_virustotal(args.vt_api_key, suspicious_paths, max_files=args.vt_upload_max_files)
+        for line in upload_logs:
+            console.print(f"[magenta]{line}[/magenta]")
+    elif args.vt_upload_malicious and args.vt_api_key:
+        # Backward-compatible fallback (if caller explicitly requested old mode).
         malicious_paths = sorted({x.get("exe") for x in proc_hashes if x.get("sha256") in vt_malicious_hashes and x.get("exe")})
         upload_logs = upload_files_to_virustotal(args.vt_api_key, malicious_paths, max_files=args.vt_upload_max_files)
         for line in upload_logs:
@@ -215,8 +231,9 @@ def cmd_processes(args) -> int:
 
 def cmd_ports(args) -> int:
     findings, suspicious = scan_hidden_ports()
-    _print_findings(findings)
-    _print_port_suspicious(suspicious)
+    if not args.json_only:
+        _print_findings(findings)
+        _print_port_suspicious(suspicious)
 
     if args.kill_suspicious:
         logs = kill_suspicious_ports(suspicious, ask_confirmation=(not args.yes))
@@ -309,6 +326,10 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_desktop(_args) -> int:
+    return int(launch_desktop_app())
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="secscan", description="Defensive host/network scanner (safe, non-exploit).")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -321,6 +342,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_proc.add_argument("--misp-url", default=None, help="Base URL MISP (например https://misp.company.local).")
     p_proc.add_argument("--misp-key", default=None, help="MISP API key.")
     p_proc.add_argument("--vt-api-key", default=None, help="VirusTotal API key.")
+    p_proc.add_argument("--vt-max-hash-checks", type=int, default=40, help="Max number of process hashes to query in VirusTotal.")
     p_proc.add_argument("--vt-upload-malicious", action="store_true", help="Загружать в VirusTotal файлы, распознанные как вредоносные по VT.")
     p_proc.add_argument("--vt-upload-max-files", type=int, default=10, help="Лимит файлов для загрузки в VT.")
     p_proc.add_argument("--jsonl-out", default=None, help="Путь для JSONL выгрузки находок в SIEM.")
@@ -347,9 +369,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_ports = sub.add_parser("ports", help="Сравнение high-level и low-level источников портов (rootkit mismatch check).")
     p_ports.add_argument("--json", action="store_true", help="Печатать JSON в stdout.")
+    p_ports.add_argument("--json-only", action="store_true", help="Выводить только JSON без таблиц/текста.")
     p_ports.add_argument("--kill-suspicious", action="store_true", help="Предложить завершить процесс, занимающий подозрительный порт.")
     p_ports.add_argument("-y", "--yes", action="store_true", help="Не спрашивать подтверждение (опасно).")
     p_ports.set_defaults(func=cmd_ports)
+
+    p_desktop = sub.add_parser("desktop", help="Запустить desktop UI приложения.")
+    p_desktop.set_defaults(func=cmd_desktop)
 
     p_rep = sub.add_parser("report", help="Сформировать итоговый отчёт.")
     p_rep.add_argument("--out", default="secscan-report.json", help="Путь для сохранения JSON отчёта.")
@@ -359,6 +385,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_rep.add_argument("--misp-url", default=None, help="Base URL MISP.")
     p_rep.add_argument("--misp-key", default=None, help="MISP API key.")
     p_rep.add_argument("--vt-api-key", default=None, help="VirusTotal API key.")
+    p_rep.add_argument("--vt-max-hash-checks", type=int, default=40, help="Max number of process hashes to query in VirusTotal.")
     p_rep.add_argument("--vt-upload-malicious", action="store_true", help="Загружать в VirusTotal файлы, распознанные как вредоносные по VT.")
     p_rep.add_argument("--vt-upload-max-files", type=int, default=10, help="Лимит файлов для загрузки в VT.")
     p_rep.add_argument("--jsonl-out", default=None, help="Путь для JSONL выгрузки в SIEM.")

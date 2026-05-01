@@ -96,6 +96,7 @@ def build_threat_intel_findings(
     vt_api_key: str | None,
     misp_url: str | None,
     misp_key: str | None,
+    vt_max_hash_checks: int = 40,
 ) -> tuple[list[Finding], list[str], set[str]]:
     findings: list[Finding] = []
     logs: list[str] = []
@@ -107,7 +108,10 @@ def build_threat_intel_findings(
     vt_malicious_hashes: set[str] = set()
     if vt_api_key:
         checked = 0
-        for item in proc_hashes:
+        limited = proc_hashes[: max(1, int(vt_max_hash_checks))]
+        if len(proc_hashes) > len(limited):
+            logs.append(f"VirusTotal: hash checks limited to {len(limited)} of {len(proc_hashes)} processes")
+        for item in limited:
             sha = item.get("sha256")
             if not sha:
                 continue
@@ -181,6 +185,26 @@ def upload_files_to_virustotal(vt_api_key: str | None, paths: list[str], max_fil
         if status in (200, 202):
             analysis_id = data.get("data", {}).get("id")
             logs.append(f"VT upload ok: {fpath} (analysis_id={analysis_id})")
+            result = _fetch_vt_analysis_result(vt_api_key, analysis_id)
+            if result:
+                logs.append(f"VT analysis: {fpath} => {result}")
         else:
             logs.append(f"VT upload failed: {fpath} (status={status})")
     return logs
+
+
+def _fetch_vt_analysis_result(vt_api_key: str, analysis_id: str | None) -> str | None:
+    if not analysis_id:
+        return None
+    url = f"https://www.virustotal.com/api/v3/analyses/{parse.quote(analysis_id)}"
+    headers = {"x-apikey": vt_api_key, "Accept": "application/json"}
+    status, data = _json_request(url, headers=headers)
+    if status != 200:
+        return None
+    attrs = data.get("data", {}).get("attributes", {}) or {}
+    st = attrs.get("status")
+    stats = attrs.get("stats", {}) or {}
+    mal = int(stats.get("malicious", 0) or 0)
+    susp = int(stats.get("suspicious", 0) or 0)
+    harmless = int(stats.get("harmless", 0) or 0)
+    return f"status={st}, malicious={mal}, suspicious={susp}, harmless={harmless}"

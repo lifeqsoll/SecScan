@@ -11,14 +11,20 @@ from secscan.util import run_cmd
 
 def run_host_checks() -> list[Finding]:
     findings: list[Finding] = []
+    admin = is_admin()
+
+    if admin:
+        rec = "Скан запущен с повышенными правами. Доступ к системным источникам расширен."
+    else:
+        rec = "Для части проверок нужны админ/рутовые права (например, чтение некоторых системных источников)."
 
     findings.append(
         Finding(
             id="host.privilege",
             title="Уровень прав запуска",
             severity=Severity.info,
-            details={"is_admin": is_admin()},
-            recommendation="Для части проверок нужны админ/рутовые права (например, чтение некоторых системных источников).",
+            details={"is_admin": admin},
+            recommendation=rec,
         )
     )
 

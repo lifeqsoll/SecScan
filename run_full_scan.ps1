@@ -23,6 +23,40 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 $script:LogFile = $null
 
+function Test-IsAdmin {
+  try {
+    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  } catch {
+    return $false
+  }
+}
+
+function Build-RelaunchArgs {
+  $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
+  foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    $k = $entry.Key
+    $v = $entry.Value
+    if ($v -is [switch]) {
+      if ($v.IsPresent) { $argList += "-$k" }
+      continue
+    }
+    if ($null -ne $v -and "$v" -ne "") {
+      $escaped = "$v".Replace('"', '\"')
+      $argList += "-$k `"$escaped`""
+    }
+  }
+  return ($argList -join " ")
+}
+
+if ($env:OS -eq "Windows_NT" -and -not (Test-IsAdmin)) {
+  Write-Host "[*] Elevating to Administrator..." -ForegroundColor Yellow
+  $psiArgs = Build-RelaunchArgs
+  Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $psiArgs | Out-Null
+  exit 0
+}
+
 function Write-Log {
   param(
     [string]$Message,
